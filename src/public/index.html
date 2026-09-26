@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>壁毯修复定位网校核</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header>
+    <h1>壁毯修复定位网校核</h1>
+    <p>每个单元视为连续双线性形变 · 全网不翻折连续判定 · 纹样标记换算到织补坐标</p>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>1. 网格规格</h2>
+      <div class="row">
+        <label>行数（单元）
+          <select id="rows"></select>
+        </label>
+        <label>列数（单元）
+          <select id="cols"></select>
+        </label>
+        <button id="resetKnots" type="button">重置为原网</button>
+      </div>
+      <p class="hint">2–4 行、2–4 列矩形单元；原网为单位间距的规整网格，坐标 y 轴向下。</p>
+    </section>
+
+    <section class="panel">
+      <h2>2. 织补后网结坐标（整数）</h2>
+      <div id="knotFields"></div>
+      <p class="hint">可直接录入整数坐标，或在画布中拖动网结（自动吸附整数）。任何修改都会立即使旧校核结论失效。</p>
+    </section>
+
+    <section class="panel canvas-panel">
+      <h2>定位网画布</h2>
+      <canvas id="canvas" width="680" height="680"></canvas>
+      <p class="hint">
+        灰虚线：原网；蓝色网格：织补后形变；白色方块：网结（可拖动）；
+        ◆：纹样标记原网位置；●：校核通过后换算出的织补位置。
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>3. 纹样标记（原网坐标，3–12 个）</h2>
+      <div id="markerFields"></div>
+      <button id="addMarker" type="button">＋ 添加标记</button>
+    </section>
+
+    <section class="panel">
+      <h2>4. 校核</h2>
+      <button id="verifyBtn" type="button" class="primary">校核</button>
+      <div id="staleNotice" class="stale" hidden>⚠ 输入已修改，旧结论已失效，请重新校核。</div>
+      <div id="results"></div>
+    </section>
+  </main>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

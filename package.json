@@ -1,0 +1,16 @@
+{
+  "name": "tapestry-grid-verifier",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "壁毯修复定位网：双线性连续形变校核与纹样标记换算",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node scripts/build.js && node src/server.js",
+    "test": "node --test test/*.test.js",
+    "build": "node scripts/build.js",
+    "smoke": "node scripts/smoke.js"
+  }
+}
