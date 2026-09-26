@@ -1,6 +1,7 @@
 import {
   verifyGrid, makeIdentityKnots,
   MIN_ROWS, MAX_ROWS, MIN_COLS, MAX_COLS, MIN_MARKERS, MAX_MARKERS,
+  MIN_LEADS, MAX_LEADS,
   CORNER_NAMES, FAILURE_TYPE_NAMES,
 } from '/shared/bilinear.js';
 
@@ -21,6 +22,7 @@ const state = {
   cols: 3,
   knots: makeIdentityKnots(3, 3),
   markers: defaultMarkers(3, 3),
+  leads: [], // 纹样引线限制；空数组表示未配置（校核请求不传 leads）
   result: null, // 最近一次校核结论
   fresh: false, // 结论是否仍对应当前输入（任何修改立即置 false）
 };
@@ -47,9 +49,11 @@ function resetGrid(rows, cols) {
   state.cols = cols;
   state.knots = makeIdentityKnots(rows, cols);
   state.markers = defaultMarkers(rows, cols);
+  state.leads = [];
   state.result = null;
   buildKnotFields();
   buildMarkerFields();
+  buildLeadFields();
   invalidate();
 }
 
@@ -130,7 +134,17 @@ function buildMarkerFields() {
     rm.disabled = state.markers.length <= MIN_MARKERS;
     rm.onclick = () => {
       state.markers.splice(idx, 1);
+      // 删除标记会改变后续标记下标：同步修正引用它的引线端点，
+      // 直接引用被删标记的引线整条移除（端点已不存在）。
+      state.leads = state.leads
+        .filter((ld) => ld.from !== idx && ld.to !== idx)
+        .map((ld) => ({
+          ...ld,
+          from: ld.from > idx ? ld.from - 1 : ld.from,
+          to: ld.to > idx ? ld.to - 1 : ld.to,
+        }));
       buildMarkerFields();
+      buildLeadFields();
       invalidate();
     };
     row.append(lab, document.createTextNode('u ='), ui, document.createTextNode('v ='), vi, rm);
@@ -143,16 +157,95 @@ $('#addMarker').onclick = () => {
   if (state.markers.length >= MAX_MARKERS) return;
   state.markers.push({ u: state.cols / 2, v: state.rows / 2 });
   buildMarkerFields();
+  buildLeadFields();
+  invalidate();
+};
+
+/* ---------------- 纹样引线限制 ---------------- */
+
+function markerOptions(selected) {
+  return state.markers
+    .map((m, i) => `<option value="${i}"${i === selected ? ' selected' : ''}>M${i + 1} (${fmt(m.u)}, ${fmt(m.v)})</option>`)
+    .join('');
+}
+
+function buildLeadFields() {
+  const host = $('#leadFields');
+  host.innerHTML = '';
+  state.leads.forEach((ld, idx) => {
+    const row = document.createElement('div');
+    row.className = 'lead-row';
+
+    const lab = document.createElement('em');
+    lab.textContent = `L${idx + 1}`;
+
+    const fromSel = document.createElement('select');
+    fromSel.innerHTML = markerOptions(ld.from);
+    fromSel.setAttribute('aria-label', `引线 L${idx + 1} 端点 A`);
+    fromSel.onchange = () => { ld.from = Number(fromSel.value); invalidate(); };
+
+    const toSel = document.createElement('select');
+    toSel.innerHTML = markerOptions(ld.to);
+    toSel.setAttribute('aria-label', `引线 L${idx + 1} 端点 B`);
+    toSel.onchange = () => { ld.to = Number(toSel.value); invalidate(); };
+
+    const minI = document.createElement('input');
+    minI.type = 'number';
+    minI.step = '0.01';
+    minI.min = '0';
+    minI.value = String(ld.minRatio);
+    minI.setAttribute('aria-label', `引线 L${idx + 1} 最小倍率`);
+    minI.oninput = () => { ld.minRatio = minI.valueAsNumber; invalidate(); };
+
+    const maxI = document.createElement('input');
+    maxI.type = 'number';
+    maxI.step = '0.01';
+    maxI.min = '0';
+    maxI.value = String(ld.maxRatio);
+    maxI.setAttribute('aria-label', `引线 L${idx + 1} 最大倍率`);
+    maxI.oninput = () => { ld.maxRatio = maxI.valueAsNumber; invalidate(); };
+
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.textContent = '删除';
+    rm.onclick = () => {
+      state.leads.splice(idx, 1);
+      buildLeadFields();
+      invalidate();
+    };
+
+    row.append(
+      lab,
+      document.createTextNode('A ='), fromSel,
+      document.createTextNode('B ='), toSel,
+      document.createTextNode('倍率区间 ['), minI, document.createTextNode('，'), maxI, document.createTextNode(']'),
+      rm,
+    );
+    host.append(row);
+  });
+  $('#addLead').disabled = state.leads.length >= MAX_LEADS;
+}
+
+$('#addLead').onclick = () => {
+  if (state.leads.length >= MAX_LEADS) return;
+  // 默认取前两个不同标记，倍率区间 [0.5, 2]；标记不足 2 个时后端会拒绝
+  const from = 0;
+  const to = state.markers.length > 1 ? 1 : 0;
+  state.leads.push({ from, to, minRatio: 0.5, maxRatio: 2 });
+  buildLeadFields();
   invalidate();
 };
 
 $('#verifyBtn').onclick = () => {
-  state.result = verifyGrid({
+  const spec = {
     rows: state.rows,
     cols: state.cols,
     knots: state.knots,
     markers: state.markers,
-  });
+  };
+  // 仅在配置了引线限制时携带 leads：未配置草稿的请求与响应保持原样
+  if (state.leads.length > 0) spec.leads = state.leads;
+  state.result = verifyGrid(spec);
   state.fresh = true;
   renderResults();
   draw();
@@ -209,6 +302,31 @@ function renderCellTable(res) {
   </table>`;
 }
 
+function renderLeadTable(res) {
+  const rows = res.leads.map((ld) => {
+    const failed = res.leadFailure && res.leadFailure.index === ld.index;
+    const cells = ld.segments
+      .map((s) => `(${s.r},${s.c}) 原${fmt(s.originalLength)}→织${fmt(s.mappedLength)}`)
+      .join('；');
+    const ratioText = ld.ratio === null ? '—（原长为 0）' : fmt(ld.ratio);
+    return `<tr class="${failed ? 'fail-row' : ''}">
+      <td>L${ld.index + 1}（M${ld.from + 1}→M${ld.to + 1}）</td>
+      <td>${fmt(ld.originalLength)}</td>
+      <td>${fmt(ld.mappedLength)}</td>
+      <td class="${failed ? 'bad' : ''}"><b>${ratioText}</b></td>
+      <td>[${fmt(ld.minRatio)}，${fmt(ld.maxRatio)}]</td>
+      <td>${ld.segments.length} 段：${cells}</td>
+    </tr>`;
+  }).join('');
+  return `<table>
+    <thead><tr>
+      <th>引线</th><th>原网直线长度</th><th>织补后弧长（逐片段闭式积分汇总）</th>
+      <th>实际倍率</th><th>允许倍率</th><th>经过的单元内片段</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
 function renderConclusion(res) {
   const parts = [];
 
@@ -219,6 +337,24 @@ function renderConclusion(res) {
       parts.push(`<ul>${res.errors.slice(1).map((e) => `<li>${e.message}</li>`).join('')}</ul>`);
     }
     parts.push('<p class="hint">已拦截：未输出纹样换算位置，以免失真坐标误导织补。</p>');
+    return parts.join('');
+  }
+
+  if (!res.ok && res.stage === 'leads') {
+    const f = res.leadFailure;
+    parts.push('<div class="banner fail">几何校核通过，但纹样引线伸缩校核未通过。</div>');
+    parts.push(`<p class="first-failure">首项引线失败（按录入顺序 L1→L${res.leads.length}）：${f.message}。</p>`);
+    if (f.evidence) {
+      const ev = f.evidence;
+      const lines = [];
+      if (typeof ev.originalLength === 'number') lines.push(`原网直线长度 = ${fmt(ev.originalLength)}`);
+      if (typeof ev.mappedLength === 'number') lines.push(`织补后弧长 = ${fmt(ev.mappedLength)}`);
+      if (typeof ev.ratio === 'number') lines.push(`实际倍率 = ${fmt(ev.ratio)}`);
+      if (lines.length) parts.push(`<p>长度证据：${lines.join('；')}。</p>`);
+    }
+    parts.push('<p class="hint">已拦截：该引线可能在中途被过度拉长，请勿交给织补师。</p>');
+    parts.push(renderLeadTable(res));
+    parts.push(renderCellTable(res));
     return parts.join('');
   }
 
@@ -252,6 +388,11 @@ function renderConclusion(res) {
     <thead><tr><th>标记</th><th>原网坐标 (u, v)</th><th>所在单元 / 局部坐标</th><th>织补坐标 (x, y)</th></tr></thead>
     <tbody>${markerRows}</tbody>
   </table>`);
+
+  if (Array.isArray(res.leads)) {
+    parts.push('<div class="banner ok lead-ok">纹样引线伸缩校核通过：全部引线实际倍率均在允许区间内（逐片段二次曲线闭式弧长汇总）。</div>');
+    parts.push(renderLeadTable(res));
+  }
   parts.push(renderCellTable(res));
   return parts.join('');
 }
@@ -265,6 +406,9 @@ const COLORS = {
   knotFill: '#ffffff',
   marker: '#6b7280',
   mapped: '#d32f2f',
+  leadOrig: '#8d6e63',
+  leadMapped: '#6a1b9a',
+  leadFail: '#d32f2f',
   ok: 'rgba(40,160,90,0.16)',
   fail: 'rgba(220,60,60,0.14)',
   failFirst: 'rgba(220,60,60,0.32)',
@@ -280,6 +424,16 @@ function computeView() {
   }
   for (const m of state.markers) {
     if (Number.isFinite(m.u) && Number.isFinite(m.v)) pts.push({ x: m.u, y: m.v });
+  }
+  // 引线织补曲线（含二次贝塞尔控制点）也纳入取景范围
+  const leadRes = state.fresh && state.result && Array.isArray(state.result.leads) ? state.result.leads : null;
+  if (leadRes) {
+    for (const lr of leadRes) {
+      for (const s of lr.segments) {
+        const { q0, qh, q1 } = s.mapped;
+        pts.push(q0, q1, { x: 2 * qh.x - (q0.x + q1.x) / 2, y: 2 * qh.y - (q0.y + q1.y) / 2 });
+      }
+    }
   }
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const p of pts) {
@@ -329,6 +483,7 @@ function draw() {
   drawOriginalGrid();
   drawCells();
   drawMarkers();
+  drawLeads();
   drawKnots();
 }
 
@@ -437,6 +592,52 @@ function drawMarkers() {
   });
 }
 
+/* ---------------- 纹样引线 ---------------- */
+
+function drawLeads() {
+  if (state.leads.length === 0) return;
+  const res = state.fresh ? state.result : null;
+  // 几何阶段失败时 res.leads 为 undefined，不绘制；leads 阶段失败时仍绘制（含证据曲线）
+  const leadResults = res && Array.isArray(res.leads) ? res.leads : null;
+
+  state.leads.forEach((ld, idx) => {
+    const a = state.markers[ld.from];
+    const b = state.markers[ld.to];
+    if (!a || !b || !Number.isFinite(a.u) || !Number.isFinite(b.u)) return;
+
+    // 原网直线（原网坐标空间）
+    ctx.save();
+    ctx.setLineDash([2, 3]);
+    ctx.strokeStyle = COLORS.leadOrig;
+    ctx.lineWidth = 1.2;
+    line(...toPx(a.u, a.v), ...toPx(b.u, b.v));
+    ctx.restore();
+
+    // 织补后曲线：逐片段为精确二次曲线，用二次贝塞尔绘制
+    const lr = leadResults && leadResults[idx];
+    if (lr) {
+      const failed = res.leadFailure && res.leadFailure.index === idx;
+      ctx.save();
+      ctx.strokeStyle = failed ? COLORS.leadFail : COLORS.leadMapped;
+      ctx.lineWidth = failed ? 2.6 : 2;
+      ctx.beginPath();
+      lr.segments.forEach((s, si) => {
+        const { q0, qh, q1 } = s.mapped;
+        // 二次贝塞尔控制点 P 满足其 z=1/2 点 = qh：P = 2qh − (q0+q1)/2
+        const pcx = 2 * qh.x - (q0.x + q1.x) / 2;
+        const pcy = 2 * qh.y - (q0.y + q1.y) / 2;
+        const [x0, y0] = toPx(q0.x, q0.y);
+        const [cx, cy] = toPx(pcx, pcy);
+        const [x1, y1] = toPx(q1.x, q1.y);
+        if (si === 0) ctx.moveTo(x0, y0);
+        ctx.quadraticCurveTo(cx, cy, x1, y1);
+      });
+      ctx.stroke();
+      ctx.restore();
+    }
+  });
+}
+
 /* ---------------- 网结拖动 ---------------- */
 
 let dragKnot = null;
@@ -484,5 +685,6 @@ canvas.addEventListener('pointercancel', endDrag);
 
 buildKnotFields();
 buildMarkerFields();
+buildLeadFields();
 renderResults();
 draw();

@@ -97,6 +97,21 @@ button.primary:hover { background: #0d4f9e; }
 }
 .marker-row em { font-style: normal; font-weight: 600; width: 30px; }
 
+.lead-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--line);
+  font-size: 13px;
+}
+.lead-row:last-child { border-bottom: none; }
+.lead-row em { font-style: normal; font-weight: 600; width: 30px; }
+.lead-row select { padding: 4px 6px; }
+.lead-row input { width: 74px; }
+.banner.lead-ok { margin-top: 12px; }
+
 #canvas {
   width: 100%;
   max-width: 680px;
