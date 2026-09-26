@@ -97,6 +97,24 @@ button.primary:hover { background: #0d4f9e; }
 }
 .marker-row em { font-style: normal; font-weight: 600; width: 30px; }
 
+.lead-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 0;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+}
+.lead-row em { font-style: normal; font-weight: 600; width: 30px; color: var(--ink); }
+.lead-row select { padding: 4px 6px; }
+.lead-row input { width: 74px; }
+
+.lead-title { margin: 18px 0 6px; font-size: 15px; }
+.lead-table { font-size: 12px; }
+.lead-table td { vertical-align: top; }
+.lead-ok { color: var(--ok); font-weight: 700; }
+
 #canvas {
   width: 100%;
   max-width: 680px;

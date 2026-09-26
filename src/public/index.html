@@ -38,7 +38,8 @@
       <canvas id="canvas" width="680" height="680"></canvas>
       <p class="hint">
         灰虚线：原网；蓝色网格：织补后形变；白色方块：网结（可拖动）；
-        ◆：纹样标记原网位置；●：校核通过后换算出的织补位置。
+        ◆：纹样标记原网位置；●：校核通过后换算出的织补位置；
+        紫色虚线：引线原网直线；绿/红实线：引线织补像（逐片段二次曲线，绿=倍率合格，红=超限），线上小圆点为网格线交点切点。
       </p>
     </section>
 
@@ -49,9 +50,22 @@
     </section>
 
     <section class="panel">
-      <h2>4. 校核</h2>
+      <h2>4. 纹样引线伸缩限制（可选，1–4 条）</h2>
+      <p class="hint">
+        每条引线选择<b>两个已有标记</b>作为端点，并填写相对原网直线长度允许的
+        <b>最小 / 最大伸缩倍率</b>。校核时按引线与原网网格线的全部交点把线段
+        切成单元内片段，逐片段对双线性映射后的二次曲线<b>精确求弧长</b>
+        （闭式积分，非折线 / 像素 / 采样）后汇总，防止跨越多单元后端点看似
+        合适、中途却被过度拉长。不配置引线时维持原有校核行为。
+      </p>
+      <div id="lineFields"></div>
+      <button id="addLine" type="button">＋ 添加引线</button>
+    </section>
+
+    <section class="panel">
+      <h2>5. 校核</h2>
       <button id="verifyBtn" type="button" class="primary">校核</button>
-      <div id="staleNotice" class="stale" hidden>⚠ 输入已修改，旧结论已失效，请重新校核。</div>
+      <div id="staleNotice" class="stale" hidden>⚠ 输入已修改（网结 / 标记 / 引线），旧结论已失效，请重新校核。</div>
       <div id="results"></div>
     </section>
   </main>

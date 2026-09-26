@@ -102,6 +102,91 @@ check(!!health && health.status === 'ok', '健康检查 GET /healthz', JSON.stri
   check(body.markers === null, '样例D：无效输入不输出纹样位置');
 }
 
+/* 6) 样例 E：引线伸缩——恒等网格倍率恰为 1，片段证据完整 */
+{
+  const markers = [{ u: 0.2, v: 0.2 }, { u: 3.2, v: 1.2 }, { u: 1, v: 1 }];
+  const { body } = await postVerify({
+    rows: 2, cols: 4, knots: ident(2, 4), markers,
+    lines: [{ from: 0, to: 1, minRatio: 0.99, maxRatio: 1.01 }],
+  });
+  const it = body.lines && body.lines.items && body.lines.items[0];
+  const L = Math.hypot(3, 1);
+  check(body.ok === true && body.lines && body.lines.firstFailure === null, '样例E：恒等网引线倍率 1 通过');
+  check(
+    !!it && near(it.originalLength, L) && near(it.wovenLength, L, 1e-9)
+      && near(it.ratio, 1, 1e-9) && it.segments.length === 5,
+    '样例E：原始/织补长度、倍率与 5 个单元片段证据', JSON.stringify(it && {
+      o: it.originalLength, w: it.wovenLength, r: it.ratio, n: it.segments.length,
+    }),
+  );
+}
+
+/* 7) 样例 F：中途被拉长——端点直线距离看似倍率 1，逐片段精确弧长判超限 */
+{
+  const k = ident(2, 2);
+  k[1] = [{ x: 0, y: 1 }, { x: 1, y: 2 }, { x: 2, y: 1 }];
+  k[2] = [{ x: 0, y: 2 }, { x: 1, y: 4 }, { x: 2, y: 2 }];
+  const markers = [{ u: 0, v: 1 }, { u: 2, v: 1 }, { u: 0.5, v: 0.5 }];
+  const { body } = await postVerify({
+    rows: 2, cols: 2, knots: k, markers,
+    lines: [{ from: 0, to: 1, minRatio: 0.95, maxRatio: 1.05 }],
+  });
+  const f = body.lines && body.lines.firstFailure;
+  check(
+    body.ok === false && body.firstFailure === null && f && f.index === 0
+      && f.reason === 'ratio-out-of-range' && f.segments.length === 2,
+    '样例F：网格通过但引线中途拉长，首项失败为倍率超限', JSON.stringify(f && {
+      reason: f.reason, segs: f.segments.length,
+    }),
+  );
+  check(
+    !!f && near(f.originalLength, 2) && near(f.wovenLength, 2 * Math.SQRT2, 1e-9)
+      && near(f.ratio, Math.SQRT2, 1e-9),
+    '样例F：长度证据 = 原长 2、精确弧长 2√2、倍率 √2', JSON.stringify(f && {
+      o: f.originalLength, w: f.wovenLength, r: f.ratio,
+    }),
+  );
+  check(body.markers !== null, '样例F：网格本身通过，标记换算位置仍输出');
+}
+
+/* 8) 样例 G：原始长度为零——按录入顺序首项失败并给零长度证据 */
+{
+  const markers = [{ u: 1, v: 1 }, { u: 1, v: 1 }, { u: 0.5, v: 0.5 }];
+  const { body } = await postVerify({
+    rows: 2, cols: 2, knots: ident(2, 2), markers,
+    lines: [{ from: 0, to: 1, minRatio: 0.5, maxRatio: 2 }],
+  });
+  const f = body.lines && body.lines.firstFailure;
+  check(
+    body.ok === false && f && f.reason === 'zero-length' && f.originalLength === 0 && f.ratio === null,
+    '样例G：零长度引线首项失败（含长度证据）', JSON.stringify(f),
+  );
+}
+
+/* 9) 样例 H：未配置引线的既有草稿——响应形态保持原样（lines=null） */
+{
+  const { body } = await postVerify({
+    rows: 2, cols: 2, knots: ident(2, 2),
+    markers: [{ u: 0.5, v: 0.5 }, { u: 1, v: 1 }, { u: 1.5, v: 1.5 }],
+  });
+  check(body.ok === true && !Object.prototype.hasOwnProperty.call(body, 'lines'),
+    '样例H：未配置引线时响应不含 lines 字段，既有响应逐字不变');
+}
+
+/* 10) 样例 I：端点引用无效标记——校验阶段拒绝 */
+{
+  const { body } = await postVerify({
+    rows: 2, cols: 2, knots: ident(2, 2),
+    markers: [{ u: 0.5, v: 0.5 }, { u: 1, v: 1 }, { u: 1.5, v: 1.5 }],
+    lines: [{ from: 0, to: 9, minRatio: 0.5, maxRatio: 2 }],
+  });
+  check(
+    body.ok === false && body.stage === 'validation'
+      && body.errors.some((e) => e.kind === 'line-endpoint'),
+    '样例I：引线端点无效被拒绝', JSON.stringify(body.errors[0]),
+  );
+}
+
 if (failures) {
   console.error(`\n冒烟验收未通过：${failures} 项失败`);
   process.exit(1);
